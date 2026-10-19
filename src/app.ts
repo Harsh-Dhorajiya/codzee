@@ -1,6 +1,8 @@
 import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import taskRouter from './routes/task.routes';
+import { errorHandler } from './middleware/errorHandler';
+import { NotFoundError } from './errors/app.error';
 
 const app: Application = express();
 
@@ -21,32 +23,12 @@ app.get('/health', (_req: Request, res: Response) => {
 // API Routes
 app.use('/api/v1/tasks', taskRouter);
 
-// 404 Not Found Handler
-app.use((_req: Request, res: Response) => {
-  res.status(404).json({
-    success: false,
-    message: 'Endpoint not found',
-  });
+// 404 Route Interceptor
+app.use((_req: Request, _res: Response, next: NextFunction) => {
+  next(new NotFoundError('Endpoint not found'));
 });
 
 // Centralized Error Handling Middleware
-app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-  if (err instanceof SyntaxError && (err as any).status === 400 && 'body' in err) {
-    res.status(400).json({
-      success: false,
-      message: 'Malformed JSON payload in request body',
-    });
-    return;
-  }
-
-  const statusCode = typeof err.statusCode === 'number' ? err.statusCode : typeof err.status === 'number' ? err.status : 500;
-
-  console.error('Unhandled Application Error:', err);
-  res.status(statusCode).json({
-    success: false,
-    message: statusCode === 500 ? 'Internal server error' : err.message || 'An error occurred',
-    ...(process.env.NODE_ENV === 'development' && statusCode === 500 && { error: err.message }),
-  });
-});
+app.use(errorHandler);
 
 export default app;
