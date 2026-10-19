@@ -1,5 +1,6 @@
 import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
+import authRouter from './routes/auth.routes';
 import taskRouter from './routes/task.routes';
 import { errorHandler } from './middleware/errorHandler';
 import { NotFoundError } from './errors/app.error';
@@ -21,6 +22,7 @@ app.get('/health', (_req: Request, res: Response) => {
 });
 
 // API Routes
+app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/tasks', taskRouter);
 
 // 404 Route Interceptor

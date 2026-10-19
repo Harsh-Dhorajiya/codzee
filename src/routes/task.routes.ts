@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { taskController } from '../controllers/task.controller';
+import { authenticate } from '../middleware/auth.middleware';
 import { validate } from '../middleware/validate';
 import {
   createTaskSchema,
@@ -9,6 +10,9 @@ import {
 } from '../schemas/task.schema';
 
 const router = Router();
+
+// Protect all task endpoints with JWT authentication
+router.use(authenticate);
 
 router.get('/', validate(taskQuerySchema, 'query'), taskController.getAllTasks);
 

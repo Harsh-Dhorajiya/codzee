@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
+import { ForbiddenError, NotFoundError } from '../errors/app.error';
 import {
   CreateTaskDTO,
   PaginatedTasksResult,
@@ -11,10 +12,11 @@ export class TaskService {
   private tasks: Map<string, Task> = new Map();
 
   /**
-   * Retrieve tasks with optional filtering, search, and pagination.
+   * Retrieve tasks belonging to the authenticated user with optional filtering and pagination.
    */
-  public getAll(filters?: TaskQueryFilters): PaginatedTasksResult {
-    let result = Array.from(this.tasks.values());
+  public getAll(filters: TaskQueryFilters | undefined, ownerId: string): PaginatedTasksResult {
+    // Multi-tenant scoping: Strictly isolate to current user's tasks
+    let result = Array.from(this.tasks.values()).filter((task) => task.ownerId === ownerId);
 
     // 1. Filter by status
     if (filters?.status) {
@@ -36,7 +38,7 @@ export class TaskService {
       );
     }
 
-    // 4. Sort newest first by default
+    // 4. Sort newest first
     result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
     const total = result.length;
@@ -45,8 +47,6 @@ export class TaskService {
     const page = filters?.page ?? 1;
     const limit = filters?.limit ?? 10;
 
-    // Note: If limit <= 0, totalPages results in Infinity or NaN (if total is 0).
-    // If page <= 0, startIndex results in a negative offset for slice.
     const totalPages = Math.ceil(total / limit);
     const startIndex = (page - 1) * limit;
     const paginatedData = result.slice(startIndex, startIndex + limit).map((t) => ({ ...t }));
@@ -63,17 +63,26 @@ export class TaskService {
   }
 
   /**
-   * Find a specific task by its unique ID.
+   * Find a task by ID ensuring it belongs to the authenticated user (IDOR prevention).
    */
-  public getById(id: string): Task | null {
+  public getById(id: string, ownerId: string): Task {
     const task = this.tasks.get(id);
-    return task ? { ...task } : null;
+
+    if (!task) {
+      throw new NotFoundError(`Task with id '${id}' not found`);
+    }
+
+    if (task.ownerId !== ownerId) {
+      throw new ForbiddenError('You do not have permission to access this task');
+    }
+
+    return { ...task };
   }
 
   /**
-   * Create and persist a new task with defaults.
+   * Create and persist a new task scoped to the authenticated user.
    */
-  public create(dto: CreateTaskDTO): Task {
+  public create(dto: CreateTaskDTO, ownerId: string): Task {
     const now = new Date().toISOString();
     const newTask: Task = {
       id: uuidv4(),
@@ -81,6 +90,7 @@ export class TaskService {
       description: dto.description?.trim() ?? '',
       status: dto.status ?? 'todo',
       priority: dto.priority ?? 'medium',
+      ownerId,
       createdAt: now,
       updatedAt: now,
     };
@@ -90,12 +100,17 @@ export class TaskService {
   }
 
   /**
-   * Update an existing task by ID.
+   * Update an existing task ensuring ownership verification (IDOR prevention).
    */
-  public update(id: string, dto: UpdateTaskDTO): Task | null {
+  public update(id: string, dto: UpdateTaskDTO, ownerId: string): Task {
     const existingTask = this.tasks.get(id);
+
     if (!existingTask) {
-      return null;
+      throw new NotFoundError(`Task with id '${id}' not found`);
+    }
+
+    if (existingTask.ownerId !== ownerId) {
+      throw new ForbiddenError('You do not have permission to modify this task');
     }
 
     const updatedTask: Task = {
@@ -112,9 +127,19 @@ export class TaskService {
   }
 
   /**
-   * Delete a task by ID.
+   * Delete a task ensuring ownership verification (IDOR prevention).
    */
-  public delete(id: string): boolean {
+  public delete(id: string, ownerId: string): boolean {
+    const existingTask = this.tasks.get(id);
+
+    if (!existingTask) {
+      throw new NotFoundError(`Task with id '${id}' not found`);
+    }
+
+    if (existingTask.ownerId !== ownerId) {
+      throw new ForbiddenError('You do not have permission to delete this task');
+    }
+
     return this.tasks.delete(id);
   }
 }
