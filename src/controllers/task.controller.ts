@@ -1,6 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
 import { taskService, TaskService } from '../services/task.service';
-import { NotFoundError } from '../errors/app.error';
 import { CreateTaskInput, TaskQueryInput, UpdateTaskInput } from '../schemas/task.schema';
 
 export class TaskController {
@@ -8,7 +7,7 @@ export class TaskController {
 
   /**
    * GET /api/v1/tasks
-   * Retrieve tasks with filtering, search, and pagination.
+   * Retrieve tasks belonging to the authenticated user.
    */
   public getAllTasks = async (
     req: Request,
@@ -16,8 +15,9 @@ export class TaskController {
     next: NextFunction
   ): Promise<void> => {
     try {
+      const userId = req.user!.id;
       const filters = req.query as unknown as TaskQueryInput;
-      const result = this.service.getAll(filters);
+      const result = this.service.getAll(filters, userId);
 
       res.status(200).json({
         success: true,
@@ -31,7 +31,7 @@ export class TaskController {
 
   /**
    * GET /api/v1/tasks/:id
-   * Retrieve a single task by ID.
+   * Retrieve a single task by ID (scoped to owner).
    */
   public getTaskById = async (
     req: Request,
@@ -39,12 +39,9 @@ export class TaskController {
     next: NextFunction
   ): Promise<void> => {
     try {
+      const userId = req.user!.id;
       const id = req.params.id as string;
-      const task = this.service.getById(id);
-
-      if (!task) {
-        throw new NotFoundError(`Task with id '${id}' not found`);
-      }
+      const task = this.service.getById(id, userId);
 
       res.status(200).json({
         success: true,
@@ -57,7 +54,7 @@ export class TaskController {
 
   /**
    * POST /api/v1/tasks
-   * Create a new task with validated payload.
+   * Create a new task assigned to the authenticated user.
    */
   public createTask = async (
     req: Request,
@@ -65,8 +62,9 @@ export class TaskController {
     next: NextFunction
   ): Promise<void> => {
     try {
+      const userId = req.user!.id;
       const input = req.body as CreateTaskInput;
-      const created = this.service.create(input);
+      const created = this.service.create(input, userId);
 
       res.status(201).json({
         success: true,
@@ -79,7 +77,7 @@ export class TaskController {
 
   /**
    * PUT /api/v1/tasks/:id
-   * Update an existing task with validated payload.
+   * Update an existing task ensuring caller ownership.
    */
   public updateTask = async (
     req: Request,
@@ -87,13 +85,10 @@ export class TaskController {
     next: NextFunction
   ): Promise<void> => {
     try {
+      const userId = req.user!.id;
       const id = req.params.id as string;
       const input = req.body as UpdateTaskInput;
-      const updated = this.service.update(id, input);
-
-      if (!updated) {
-        throw new NotFoundError(`Task with id '${id}' not found`);
-      }
+      const updated = this.service.update(id, input, userId);
 
       res.status(200).json({
         success: true,
@@ -106,7 +101,7 @@ export class TaskController {
 
   /**
    * DELETE /api/v1/tasks/:id
-   * Remove a task by ID.
+   * Remove a task ensuring caller ownership.
    */
   public deleteTask = async (
     req: Request,
@@ -114,12 +109,9 @@ export class TaskController {
     next: NextFunction
   ): Promise<void> => {
     try {
+      const userId = req.user!.id;
       const id = req.params.id as string;
-      const deleted = this.service.delete(id);
-
-      if (!deleted) {
-        throw new NotFoundError(`Task with id '${id}' not found`);
-      }
+      this.service.delete(id, userId);
 
       res.status(204).send();
     } catch (error) {
