@@ -1,26 +1,28 @@
 import { Request, Response, NextFunction } from 'express';
 import { taskService, TaskService } from '../services/task.service';
-import {
-  CreateTaskDTO,
-  UpdateTaskDTO,
-  VALID_PRIORITIES,
-  VALID_STATUSES,
-} from '../types/task.types';
+import { NotFoundError } from '../errors/app.error';
+import { CreateTaskInput, TaskQueryInput, UpdateTaskInput } from '../schemas/task.schema';
 
 export class TaskController {
   constructor(private readonly service: TaskService = taskService) {}
 
   /**
    * GET /api/v1/tasks
-   * Retrieve all tasks.
+   * Retrieve tasks with filtering, search, and pagination.
    */
-  public getAllTasks = (req: Request, res: Response, next: NextFunction): void => {
+  public getAllTasks = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
-      const tasks = this.service.getAll();
+      const filters = req.query as unknown as TaskQueryInput;
+      const result = this.service.getAll(filters);
+
       res.status(200).json({
         success: true,
-        count: tasks.length,
-        data: tasks,
+        data: result.data,
+        pagination: result.pagination,
       });
     } catch (error) {
       next(error);
@@ -31,17 +33,17 @@ export class TaskController {
    * GET /api/v1/tasks/:id
    * Retrieve a single task by ID.
    */
-  public getTaskById = (req: Request, res: Response, next: NextFunction): void => {
+  public getTaskById = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const id = req.params.id as string;
       const task = this.service.getById(id);
 
       if (!task) {
-        res.status(404).json({
-          success: false,
-          message: `Task with id '${id}' not found`,
-        });
-        return;
+        throw new NotFoundError(`Task with id '${id}' not found`);
       }
 
       res.status(200).json({
@@ -55,44 +57,17 @@ export class TaskController {
 
   /**
    * POST /api/v1/tasks
-   * Create a new task.
+   * Create a new task with validated payload.
    */
-  public createTask = (req: Request, res: Response, next: NextFunction): void => {
+  public createTask = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
-      const { title, description, status, priority } = req.body;
+      const input = req.body as CreateTaskInput;
+      const created = this.service.create(input);
 
-      if (!title || typeof title !== 'string' || title.trim().length === 0) {
-        res.status(400).json({
-          success: false,
-          message: 'Field "title" is required and must be a non-empty string',
-        });
-        return;
-      }
-
-      if (status !== undefined && !VALID_STATUSES.includes(status)) {
-        res.status(400).json({
-          success: false,
-          message: `Invalid status '${status}'. Allowed values: ${VALID_STATUSES.join(', ')}`,
-        });
-        return;
-      }
-
-      if (priority !== undefined && !VALID_PRIORITIES.includes(priority)) {
-        res.status(400).json({
-          success: false,
-          message: `Invalid priority '${priority}'. Allowed values: ${VALID_PRIORITIES.join(', ')}`,
-        });
-        return;
-      }
-
-      const dto: CreateTaskDTO = {
-        title,
-        description,
-        status,
-        priority,
-      };
-
-      const created = this.service.create(dto);
       res.status(201).json({
         success: true,
         data: created,
@@ -104,52 +79,20 @@ export class TaskController {
 
   /**
    * PUT /api/v1/tasks/:id
-   * Update an existing task.
+   * Update an existing task with validated payload.
    */
-  public updateTask = (req: Request, res: Response, next: NextFunction): void => {
+  public updateTask = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const id = req.params.id as string;
-      const { title, description, status, priority } = req.body;
-
-      if (title !== undefined && (typeof title !== 'string' || title.trim().length === 0)) {
-        res.status(400).json({
-          success: false,
-          message: 'Field "title" must be a non-empty string when provided',
-        });
-        return;
-      }
-
-      if (status !== undefined && !VALID_STATUSES.includes(status)) {
-        res.status(400).json({
-          success: false,
-          message: `Invalid status '${status}'. Allowed values: ${VALID_STATUSES.join(', ')}`,
-        });
-        return;
-      }
-
-      if (priority !== undefined && !VALID_PRIORITIES.includes(priority)) {
-        res.status(400).json({
-          success: false,
-          message: `Invalid priority '${priority}'. Allowed values: ${VALID_PRIORITIES.join(', ')}`,
-        });
-        return;
-      }
-
-      const dto: UpdateTaskDTO = {
-        title,
-        description,
-        status,
-        priority,
-      };
-
-      const updated = this.service.update(id, dto);
+      const input = req.body as UpdateTaskInput;
+      const updated = this.service.update(id, input);
 
       if (!updated) {
-        res.status(404).json({
-          success: false,
-          message: `Task with id '${id}' not found`,
-        });
-        return;
+        throw new NotFoundError(`Task with id '${id}' not found`);
       }
 
       res.status(200).json({
@@ -165,17 +108,17 @@ export class TaskController {
    * DELETE /api/v1/tasks/:id
    * Remove a task by ID.
    */
-  public deleteTask = (req: Request, res: Response, next: NextFunction): void => {
+  public deleteTask = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const id = req.params.id as string;
       const deleted = this.service.delete(id);
 
       if (!deleted) {
-        res.status(404).json({
-          success: false,
-          message: `Task with id '${id}' not found`,
-        });
-        return;
+        throw new NotFoundError(`Task with id '${id}' not found`);
       }
 
       res.status(204).send();
